@@ -1,0 +1,27 @@
+# Voice to Text App Dependencies
+# Python 3.11+ required
+
+# Global hotkey listener
+pynput>=1.7.6
+
+# Audio recording (sounddevice works better on Windows)
+sounddevice>=0.5.0
+scipy>=1.10.0
+
+# Clipboard operations
+pyperclip>=1.8.2
+
+# Keyboard/mouse automation for pasting
+pyautogui>=0.9.54
+
+# OpenAI Whisper API client
+openai>=1.52.0
+
+# Environment variables
+python-dotenv>=1.0.1
+
+# System tray icon (Windows)
+pystray>=0.19.5
+
+# Image support for tray icon
+Pillow>=10.4.0

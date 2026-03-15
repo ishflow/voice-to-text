@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"C:\\\\Users\\\\admin\\\\Documents\\\\VOICE TO TEXT APP\")",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(timeout:*)",
+      "Bash(ping:*)",
+      "Bash(dir \"%TEMP%\\\\voice_to_text_recording.wav\")",
+      "Bash(taskkill:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(start \"\" pythonw main.py)",
+      "Bash(dir \"C:\\\\Users\\\\admin\\\\Documents\\\\VOICE TO TEXT APP\\\\dist\\\\VoiceToText.exe\")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(gh auth status:*)",
+      "Bash(git config:*)",
+      "Bash(winget install:*)",
+      "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" auth login -h github.com -p https -w)",
+      "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" repo create voice-to-text --private --source=. --remote=origin --push --description \"Windows Voice to Text App - Ctrl+Space ile ses tanima\")",
+      "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" release create v1.0 ./dist/VoiceToText.exe ./dist/VoiceToText_Setup.exe --title \"Voice to Text v1.0\" --notes \"$\\(cat <<''EOF''\n## Voice to Text v1.0\n\nWindows için ses tanıma uygulaması.\n\n### Özellikler\n- **Ctrl+Space** ile kayıt başlat/durdur\n- Türkçe, İngilizce, Rusça ve otomatik dil desteği\n- OpenAI Whisper API ile yüksek doğruluk\n- System tray''de çalışır\n- Maksimum 10 dakika kayıt\n\n### İndirme\n- **VoiceToText_Setup.exe** - Kurulum sihirbazı \\(önerilen\\)\n- **VoiceToText.exe** - Portable versiyon \\(kurulum gerektirmez\\)\n\n### Kullanım\n1. İndirin ve çalıştırın\n2. Ctrl+Space ile kayıt başlatın\n3. Konuşun\n4. Ctrl+Space ile durdurun\n5. Metin otomatik yapıştırılır\nEOF\n\\)\")",
+      "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" release create v1.0 \"dist\\\\VoiceToText.exe\" \"dist\\\\VoiceToText_Setup.exe\" --title \"Voice to Text v1.0\" --notes \"Windows ses tanima uygulamasi. Ctrl+Space ile kayit baslat/durdur.\")",
+      "Bash(dir \"C:\\\\Users\\\\admin\\\\Documents\\\\VOICE TO TEXT APP\\\\dist\")",
+      "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" release create v1.0 \"C:\\\\Users\\\\admin\\\\Documents\\\\VOICE TO TEXT APP\\\\dist\\\\VoiceToText.exe\" \"C:\\\\Users\\\\admin\\\\Documents\\\\VOICE TO TEXT APP\\\\dist\\\\Uba_VoiceToText_Setup.exe\" --repo ishflow/voice-to-text --title \"Voice to Text v1.0\" --notes \"Windows ses tanima uygulamasi. Ctrl+Space ile kayit baslat/durdur. Turkce, Ingilizce, Rusca destegi.\")",
+      "Bash(start \"\" \"C:\\\\Users\\\\admin\\\\Documents\\\\VOICE TO TEXT APP\\\\dist\\\\Uba_VoiceToText_Setup.exe\")",
+      "Bash(start \"\" \"C:\\\\Users\\\\admin\\\\Documents\\\\VOICE TO TEXT APP\\\\dist\\\\VoiceToText_Setup.exe\")"
+    ]
+  }
+}
