@@ -537,6 +537,9 @@ class VoiceToTextApp:
     def on_key_press(self, key):
         """Tus basimi event handler."""
         try:
+            if key == keyboard.Key.esc and self.is_recording:
+                self._cancel_recording()
+                return
             if self._is_alt_key(key):
                 self.alt_press_time = time.time()
                 self.other_key_pressed = False
