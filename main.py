@@ -193,6 +193,7 @@ class FloatingIndicator:
         self.pulse_phase = 0.0
         self.timer_text = None
         self.record_dot = None
+        self.on_cancel = None  # Iptal callback
 
     def set_recorder(self, recorder):
         self.recorder = recorder
@@ -313,7 +314,7 @@ class FloatingIndicator:
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
 
-        w, h = 240, 56
+        w, h = 280, 56
 
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
@@ -368,17 +369,62 @@ class FloatingIndicator:
 
         # Timer
         self.timer_text = self.canvas.create_text(
-            w - 18, h // 2,
+            w - 52, h // 2,
             text="0:00",
             font=("Segoe UI Semibold", 11),
             fill="#8e8e93", anchor="e",
         )
+
+        # Ince ayirici cizgi
+        self.canvas.create_line(
+            w - 42, 14, w - 42, h - 14,
+            fill="#2c2c2e", width=1,
+        )
+
+        # X (iptal) butonu
+        cx_btn = w - 22
+        cy_btn = h // 2
+        sz = 6  # X cizgi boyutu
+        self.x_line1 = self.canvas.create_line(
+            cx_btn - sz, cy_btn - sz, cx_btn + sz, cy_btn + sz,
+            fill="#636366", width=2, capstyle="round",
+        )
+        self.x_line2 = self.canvas.create_line(
+            cx_btn - sz, cy_btn + sz, cx_btn + sz, cy_btn - sz,
+            fill="#636366", width=2, capstyle="round",
+        )
+        # X hover alani (gorunmez dikdortgen)
+        self.x_hit = self.canvas.create_rectangle(
+            cx_btn - 14, cy_btn - 14, cx_btn + 14, cy_btn + 14,
+            fill="", outline="", width=0,
+        )
+        self.canvas.tag_bind(self.x_hit, "<Enter>", self._on_x_hover_in)
+        self.canvas.tag_bind(self.x_hit, "<Leave>", self._on_x_hover_out)
+        self.canvas.tag_bind(self.x_hit, "<ButtonRelease-1>", self._on_x_click)
+        # X cizimleri de tiklanabilir
+        self.canvas.tag_bind(self.x_line1, "<ButtonRelease-1>", self._on_x_click)
+        self.canvas.tag_bind(self.x_line2, "<ButtonRelease-1>", self._on_x_click)
 
         # Surukleme icin mouse event'leri
         self.canvas.bind("<ButtonPress-1>", self._on_drag_start)
         self.canvas.bind("<B1-Motion>", self._on_drag_move)
 
         self.root.withdraw()
+
+    def _on_x_hover_in(self, event):
+        """X uzerine gelince kirmiziya don."""
+        self.canvas.itemconfig(self.x_line1, fill="#FF453A")
+        self.canvas.itemconfig(self.x_line2, fill="#FF453A")
+
+    def _on_x_hover_out(self, event):
+        """X'ten ayrilinca griye don."""
+        self.canvas.itemconfig(self.x_line1, fill="#636366")
+        self.canvas.itemconfig(self.x_line2, fill="#636366")
+
+    def _on_x_click(self, event):
+        """X'e tiklaninca kaydi iptal et."""
+        if self.on_cancel:
+            self.on_cancel()
 
     def _on_drag_start(self, event):
         """Surukleme basla — mouse offset kaydet."""
@@ -450,6 +496,7 @@ class VoiceToTextApp:
         self.transcriber = WhisperTranscriber()
         self.indicator = FloatingIndicator()
         self.indicator.set_recorder(self.recorder)
+        self.indicator.on_cancel = self._cancel_recording
 
         self.is_recording = False
         self.current_language = None
@@ -539,6 +586,16 @@ class VoiceToTextApp:
         self.is_recording = True
         self.indicator.show(config.MSG_LISTENING)
         self.recorder.start_recording()
+
+    def _cancel_recording(self):
+        """Kaydi iptal et — API'ye gonderme, sessizce kapat."""
+        if not self.is_recording:
+            return
+        self.is_recording = False
+        self.recorder.stop_recording()  # Kaydi durdur ama kullanma
+        self.recorder.cleanup()
+        self.indicator.hide()
+        print("Kayit iptal edildi.")
 
     def _stop_recording(self):
         """Kaydi durdur ve isle."""
