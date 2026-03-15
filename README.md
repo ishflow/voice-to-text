@@ -1,37 +1,44 @@
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square&logo=windows" />
   <img src="https://img.shields.io/badge/python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" />
-  <img src="https://img.shields.io/badge/API-OpenAI%20Whisper-412991?style=flat-square&logo=openai&logoColor=white" />
+  <img src="https://img.shields.io/badge/API-OpenAI-412991?style=flat-square&logo=openai&logoColor=white" />
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" />
 </p>
 
-# Voice to Text
+# Voice to Text + Instant Translate
 
-A fast, minimal voice-to-text app for Windows. Double-tap **ALT** to start recording, speak, double-tap **ALT** again — your speech is transcribed and automatically pasted wherever your cursor is.
+A fast, minimal productivity tool for Windows with two powers:
+
+**Voice to Text** — Double-tap **ALT**, speak, double-tap **ALT** again. Your speech is transcribed and auto-pasted wherever your cursor is.
+
+**Instant Translate** — Select any text, double-tap **CTRL**. A floating popup appears next to your mouse with the Turkish translation.
 
 ```
-  ALT ALT  -->  Speak  -->  ALT ALT  -->  Text appears
+  Voice:      ALT ALT  →  Speak  →  ALT ALT  →  Text pasted
+  Translate:  Select text  →  CTRL CTRL  →  Translation popup
 ```
 
 ## Features
 
-- **ALT x2** to start/stop recording (won't trigger Alt+Tab or other shortcuts)
+### Voice to Text
+- **ALT x2** to start/stop recording (won't trigger Alt+Tab)
 - **Auto-paste** into any app — terminal, browser, editor, everywhere
-- **Multi-language** support — Turkish, English, Russian (auto-detect available)
-- **Minimal dark UI** — floating pill indicator with live waveform
+- **Smart window memory** — returns to the window where you started recording
+- **Cancel anytime** — press **ESC** or click the **X** button on the indicator
+- **Draggable indicator** — click and drag to reposition the recording pill
+- **Multi-language** — Turkish, English, Russian, or auto-detect
+
+### Instant Translate
+- **CTRL x2** to translate selected text to Turkish
+- **Follows your mouse** — popup moves with your cursor
+- Works everywhere — browser, Slack, Notepad, any app
+- Press **ESC** to dismiss
+
+### General
+- **Minimal dark UI** — floating pill with live waveform animation
 - **System tray** — runs quietly in the background
-- **Settings panel** — enter your API key from the tray menu, no config files needed
-- **Smart window memory** — pastes back into the window where you started recording
-
-## Demo
-
-```
- [Recording]               [Processing]            [Done]
- +-----------------------+  +-----------------------+  Text is pasted
- | * ||||||||||||| 0:03  |  | * ||||||||||||| 0:03  |  automatically
- +-----------------------+  +-----------------------+  into your app
-   red dot + waveform         orange dot                green dot
-```
+- **Settings panel** — enter your API key from the tray menu
+- **Status indicators** — red (recording), orange (processing), green (done)
 
 ## Quick Start
 
@@ -49,20 +56,35 @@ pythonw main.py
 
 ### 3. Set up your API key
 
-On first launch, a settings window will appear. Enter your [OpenAI API key](https://platform.openai.com/api-keys) and click **Save**.
+On first launch, a settings window appears. Enter your [OpenAI API key](https://platform.openai.com/api-keys) and click **Save**.
 
-You can also change it anytime: **right-click tray icon > Settings**.
+Change it anytime: **right-click tray icon > Settings**.
 
-## How It Works
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| **ALT x2** | Start/stop voice recording |
+| **CTRL x2** | Translate selected text |
+| **ESC** | Cancel recording / close translation popup |
+
+## How Voice to Text Works
 
 | Step | What happens |
 |------|-------------|
 | **ALT x2** | Recording starts, floating indicator appears |
-| **Speak** | Audio captured via microphone, waveform animates |
-| **ALT x2** | Recording stops, audio sent to Whisper API |
-| **Auto-paste** | Transcribed text is pasted into the active window |
+| **Speak** | Audio captured, waveform animates in real-time |
+| **ALT x2** | Recording stops, sent to Whisper API |
+| **Auto-paste** | Text pasted into the window where you started |
 
-The app remembers which window was active when you started recording. After transcription, it switches back to that window and pastes the text automatically.
+## How Instant Translate Works
+
+| Step | What happens |
+|------|-------------|
+| **Select text** | Highlight any text in any app |
+| **CTRL x2** | Selected text is captured and sent to GPT-4o-mini |
+| **Popup** | Turkish translation appears next to your mouse |
+| **ESC** | Dismiss the popup |
 
 ## Configuration
 
@@ -70,12 +92,12 @@ Settings are in `config.py`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `DOUBLE_TAP_INTERVAL_MS` | 300 | Max time between two ALT taps (ms) |
+| `DOUBLE_TAP_INTERVAL_MS` | 300 | Max time between two taps (ms) |
 | `MAX_TAP_HOLD_MS` | 200 | Max hold time per tap — ignores long presses |
 | `MAX_RECORDING_DURATION` | 600 | Maximum recording length (seconds) |
 | `SAMPLE_RATE` | 16000 | Audio sample rate (16kHz optimal for Whisper) |
 
-### Supported Languages
+### Supported Languages (Voice)
 
 | Language | Code |
 |----------|------|
@@ -84,33 +106,33 @@ Settings are in `config.py`:
 | English | `en` |
 | Russian | `ru` |
 
-Change language from tray menu: **right-click > Language**.
+Change voice language: **right-click tray icon > Language**.
 
 ## Cost
 
-Whisper API pricing: **~$0.006 per minute**
+| Feature | Model | Pricing |
+|---------|-------|---------|
+| Voice to Text | Whisper | ~$0.006/min |
+| Translate | GPT-4o-mini | ~$0.00015/request |
 
-| Usage | Cost |
-|-------|------|
-| 10 min/day | ~$0.06/day |
-| 1 hour/day | ~$0.36/day |
+Both features are very affordable for daily use.
 
 ## System Requirements
 
 - Windows 10/11
 - Python 3.11+
-- Microphone
+- Microphone (for voice)
 - OpenAI API key
 
 ## File Structure
 
 ```
 voice-to-text/
-  main.py            # App (recorder, UI, hotkey, paste logic)
-  config.py           # Configuration
-  requirements.txt    # Python dependencies
-  .env                # Your API key (created via Settings, git-ignored)
-  icon.ico            # App icon
+  main.py            # App (recorder, translator, UI, hotkeys)
+  config.py          # Configuration
+  requirements.txt   # Python dependencies
+  .env               # Your API key (created via Settings, git-ignored)
+  icon.ico           # App icon
 ```
 
 ## Troubleshooting
@@ -118,11 +140,23 @@ voice-to-text/
 **Microphone not detected**
 Check Windows Sound Settings > default input device. Make sure the app has microphone permission.
 
-**ALT x2 not working**
-Make sure you tap ALT quickly (within 300ms) without pressing any other key. Long presses and Alt+Tab are ignored by design.
+**ALT x2 / CTRL x2 not working**
+Tap quickly (within 300ms) without pressing any other key between taps. Long presses and combo keys (Alt+Tab, Ctrl+C) are ignored by design.
 
 **Paste not working in some apps**
-The app uses Windows `keybd_event` to simulate Ctrl+V. Some apps with custom input handling may not respond. In that case, the text is still on your clipboard — just press Ctrl+V manually.
+The app uses Windows `keybd_event` to simulate Ctrl+V. If an app doesn't respond, the text is still on your clipboard — press Ctrl+V manually.
+
+**Translation popup not appearing**
+Make sure you have text selected before pressing CTRL x2. The app copies the selection via Ctrl+C internally.
+
+## Version History
+
+| Version | Features |
+|---------|----------|
+| **v2.0** | + Instant Translate (CTRL x2), cancel button, ESC to cancel, draggable indicator |
+| **v1.0** | Voice to Text with ALT x2, auto-paste, settings panel |
+
+To switch to v1.0: `git checkout v1.0`
 
 ## License
 

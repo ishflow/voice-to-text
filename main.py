@@ -452,6 +452,108 @@ class FloatingIndicator:
             self.root = None
 
 
+class TranslationPopup:
+    """Mouse'u takip eden ceviri popup'i."""
+
+    def __init__(self):
+        self.win = None
+        self._auto_hide_id = None
+        self._follow_id = None
+        self._offset_x = 16
+        self._offset_y = 16
+
+    def show(self, text: str):
+        """Ceviriyi mouse yaninda goster ve takip et."""
+        self.hide()
+
+        self.win = tk.Toplevel()
+        self.win.overrideredirect(True)
+        self.win.attributes("-topmost", True)
+        self.win.configure(bg="#010101")
+        self.win.attributes("-transparentcolor", "#010101")
+        self.win.attributes("-alpha", 0.95)
+        self.win.wm_attributes("-disabled", True)
+
+        max_w = 360
+
+        # Siyah pill frame
+        frame = tk.Frame(self.win, bg="#0a0a0a", highlightbackground="#2c2c2e",
+                         highlightthickness=1, bd=0)
+        frame.pack(padx=3, pady=3)
+
+        inner = tk.Frame(frame, bg="#0a0a0a")
+        inner.pack(padx=14, pady=10)
+
+        # Ceviri metni
+        tk.Label(
+            inner, text=text, font=("Segoe UI", 11),
+            fg="#f5f5f7", bg="#0a0a0a",
+            wraplength=max_w - 36, justify="left", anchor="nw",
+        ).pack()
+
+        self.win.update_idletasks()
+
+        # Ilk pozisyon
+        self._update_position()
+
+        # Mouse'u takip et
+        self._follow_mouse()
+
+
+    def _update_position(self):
+        """Popup'i mouse yanina tasit."""
+        if not self.win:
+            return
+        cursor = ctypes.wintypes.POINT()
+        ctypes.windll.user32.GetCursorPos(ctypes.byref(cursor))
+
+        ww = self.win.winfo_reqwidth()
+        wh = self.win.winfo_reqheight()
+        sw = self.win.winfo_screenwidth()
+        sh = self.win.winfo_screenheight()
+
+        px = cursor.x + self._offset_x
+        py = cursor.y + self._offset_y
+
+        # Ekran disina cikmasin
+        if px + ww > sw - 10:
+            px = cursor.x - ww - 8
+        if py + wh > sh - 10:
+            py = cursor.y - wh - 8
+        px = max(5, px)
+        py = max(5, py)
+
+        self.win.geometry(f"+{px}+{py}")
+
+    def _follow_mouse(self):
+        """Mouse'u surekli takip et."""
+        if not self.win:
+            return
+        self._update_position()
+        self._follow_id = self.win.after(30, self._follow_mouse)
+
+    def hide(self):
+        """Popup'i kapat."""
+        if self.win:
+            if self._auto_hide_id:
+                try:
+                    self.win.after_cancel(self._auto_hide_id)
+                except Exception:
+                    pass
+                self._auto_hide_id = None
+            if self._follow_id:
+                try:
+                    self.win.after_cancel(self._follow_id)
+                except Exception:
+                    pass
+                self._follow_id = None
+            try:
+                self.win.destroy()
+            except Exception:
+                pass
+            self.win = None
+
+
 def get_env_path():
     """env dosya yolunu dondur."""
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
@@ -497,18 +599,28 @@ class VoiceToTextApp:
         self.indicator = FloatingIndicator()
         self.indicator.set_recorder(self.recorder)
         self.indicator.on_cancel = self._cancel_recording
+        self.translation_popup = TranslationPopup()
 
         self.is_recording = False
         self.current_language = None
         self.current_language_name = "Otomatik"
 
-        # ALT double-tap state
+        # ALT double-tap state (ses kaydi)
         self.alt_press_time = 0
         self.alt_last_release_time = 0
         self.other_key_pressed = False
 
+        # CTRL double-tap state (ceviri)
+        self.ctrl_press_time = 0
+        self.ctrl_last_release_time = 0
+        self.ctrl_other_key_pressed = False
+
+
         # Kayit basladiginda aktif pencere
         self.recording_start_hwnd = None
+
+        # Yapistirma oncesi clipboard'i korumak icin
+        self._clipboard_backup = None
 
         self.keyboard_listener = None
         self.tray_icon = None
@@ -531,38 +643,63 @@ class VoiceToTextApp:
         return check
 
     def _is_alt_key(self, key):
-        """ALT tusu mu kontrol et."""
         return key == keyboard.Key.alt_l or key == keyboard.Key.alt_r
+
+    def _is_ctrl_key(self, key):
+        return key == keyboard.Key.ctrl_l or key == keyboard.Key.ctrl_r
 
     def on_key_press(self, key):
         """Tus basimi event handler."""
         try:
-            if key == keyboard.Key.esc and self.is_recording:
-                self._cancel_recording()
+            if key == keyboard.Key.esc:
+                if self.is_recording:
+                    self._cancel_recording()
+                elif self.translation_popup.win:
+                    self.translation_popup.hide()
                 return
             if self._is_alt_key(key):
                 self.alt_press_time = time.time()
                 self.other_key_pressed = False
+            elif self._is_ctrl_key(key):
+                self.ctrl_press_time = time.time()
+                self.ctrl_other_key_pressed = False
             else:
                 self.other_key_pressed = True
+                self.ctrl_other_key_pressed = True
         except Exception as e:
             print(f"Key press hatasi: {e}")
 
     def on_key_release(self, key):
-        """Tus birakma event handler — ALT double-tap algilama."""
+        """Tus birakma event handler — ALT double-tap + SPACE double-tap."""
         try:
+            now = time.time()
+
+            # --- CTRL double-tap → ceviri ---
+            if self._is_ctrl_key(key):
+                hold_ms = (now - self.ctrl_press_time) * 1000
+                if hold_ms > config.MAX_TAP_HOLD_MS:
+                    self.ctrl_last_release_time = 0
+                    return
+                if self.ctrl_other_key_pressed:
+                    self.ctrl_last_release_time = 0
+                    return
+                gap_ms = (now - self.ctrl_last_release_time) * 1000
+                if self.ctrl_last_release_time > 0 and gap_ms < config.DOUBLE_TAP_INTERVAL_MS:
+                    self.ctrl_last_release_time = 0
+                    self._handle_translation()
+                else:
+                    self.ctrl_last_release_time = now
+                return
+
+            # --- ALT double-tap → ses kaydi ---
             if not self._is_alt_key(key):
                 return
 
-            now = time.time()
-
-            # ALT uzun basilmissa yoksay
             hold_ms = (now - self.alt_press_time) * 1000
             if hold_ms > config.MAX_TAP_HOLD_MS:
                 self.alt_last_release_time = 0
                 return
 
-            # Arada baska tus basildiysa yoksay
             if self.other_key_pressed:
                 self.alt_last_release_time = 0
                 return
@@ -576,15 +713,87 @@ class VoiceToTextApp:
         except Exception as e:
             print(f"Key release hatasi: {e}")
 
+    def _get_selected_text(self) -> str:
+        """Secili metni al — Ctrl+C simule edip clipboard'dan oku, sonra clipboard'i restore et."""
+        old_clip = ""
+        try:
+            old_clip = pyperclip.paste()
+        except Exception:
+            pass
+
+        # Ctrl+C simule et
+        ctypes.windll.user32.keybd_event(0x11, 0, 0, 0)  # Ctrl down
+        time.sleep(0.03)
+        ctypes.windll.user32.keybd_event(0x43, 0, 0, 0)  # C down
+        time.sleep(0.03)
+        ctypes.windll.user32.keybd_event(0x43, 0, 0x0002, 0)  # C up
+        ctypes.windll.user32.keybd_event(0x11, 0, 0x0002, 0)  # Ctrl up
+        time.sleep(0.15)
+
+        try:
+            new_clip = pyperclip.paste()
+        except Exception:
+            return ""
+
+        # Clipboard'i eski haline dondur
+        try:
+            pyperclip.copy(old_clip)
+        except Exception:
+            pass
+
+        if not new_clip or new_clip == old_clip:
+            return ""
+
+        text = new_clip.strip()
+        if len(text) > 2000:
+            text = text[:2000]
+
+        return text
+
+    def _translate_text(self, text: str) -> str:
+        """Metni Turkciye cevir."""
+        try:
+            response = self.transcriber.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a translator. Translate the given text to Turkish. Only output the translation, nothing else."},
+                    {"role": "user", "content": text},
+                ],
+                max_tokens=1000,
+                temperature=0.3,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"Ceviri hatasi: {e}")
+            return f"Ceviri hatasi: {e}"
+
+    def _handle_translation(self):
+        """Secili metni cevirip popup goster."""
+        selected = self._get_selected_text()
+        if not selected:
+            return
+
+        def do_translate():
+            result = self._translate_text(selected)
+            if self.indicator.root:
+                self.indicator.root.after(0, lambda: self.translation_popup.show(result))
+
+        threading.Thread(target=do_translate, daemon=True).start()
+
     def _toggle_recording(self):
-        """Kayit durumunu degistir."""
-        if not self.is_recording:
-            self._start_recording()
-        else:
+        """ALT x2 — ses kaydi baslat/durdur."""
+        if self.is_recording:
             self._stop_recording()
+        else:
+            self._start_recording()
 
     def _start_recording(self):
         """Kaydi baslat."""
+        # Mevcut clipboard'i yedekle
+        try:
+            self._clipboard_backup = pyperclip.paste()
+        except Exception:
+            self._clipboard_backup = None
         self.recording_start_hwnd = ctypes.windll.user32.GetForegroundWindow()
         self.is_recording = True
         self.indicator.show(config.MSG_LISTENING)
@@ -640,6 +849,11 @@ class VoiceToTextApp:
                 if self.recording_start_hwnd:
                     ctypes.windll.user32.SetForegroundWindow(self.recording_start_hwnd)
                     time.sleep(0.3)
+
+                # Secimi kaldir — End tusuna basarak imleci sona tasit
+                ctypes.windll.user32.keybd_event(0x23, 0, 0, 0)  # End down
+                ctypes.windll.user32.keybd_event(0x23, 0, 0x0002, 0)  # End up
+                time.sleep(0.05)
 
                 self._send_paste()
                 self.indicator.update_message(config.MSG_SUCCESS)
