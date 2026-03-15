@@ -326,7 +326,10 @@ class FloatingIndicator:
         self.root.configure(bg=chroma)
         self.root.attributes("-transparentcolor", chroma)
         self.root.attributes("-alpha", 0.92)
-        self.root.wm_attributes("-disabled", True)
+
+        # Surukleme state
+        self._drag_x = 0
+        self._drag_y = 0
 
         self.canvas = tk.Canvas(
             self.root, width=w, height=h,
@@ -371,7 +374,22 @@ class FloatingIndicator:
             fill="#8e8e93", anchor="e",
         )
 
+        # Surukleme icin mouse event'leri
+        self.canvas.bind("<ButtonPress-1>", self._on_drag_start)
+        self.canvas.bind("<B1-Motion>", self._on_drag_move)
+
         self.root.withdraw()
+
+    def _on_drag_start(self, event):
+        """Surukleme basla — mouse offset kaydet."""
+        self._drag_x = event.x
+        self._drag_y = event.y
+
+    def _on_drag_move(self, event):
+        """Pencereyi mouse ile surukle."""
+        x = self.root.winfo_x() + (event.x - self._drag_x)
+        y = self.root.winfo_y() + (event.y - self._drag_y)
+        self.root.geometry(f"+{x}+{y}")
 
     def _pill(self, x1, y1, x2, y2, r=20, **kwargs):
         points = [
