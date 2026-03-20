@@ -42,19 +42,28 @@ A fast, minimal productivity tool for Windows with two powers:
 
 ## Quick Start
 
-### 1. Install dependencies
+### Option A: One-click setup (recommended)
+
+```bash
+git clone https://github.com/ishflow/voice-to-text.git
+cd voice-to-text
+setup.bat
+```
+
+This creates a virtual environment, installs all dependencies, and prepares the `.env` file. Then run:
+
+```bash
+start.bat
+```
+
+### Option B: Manual setup
 
 ```bash
 pip install -r requirements.txt
-```
-
-### 2. Run
-
-```bash
 pythonw main.py
 ```
 
-### 3. Set up your API key
+### Set up your API key
 
 On first launch, a settings window appears. Enter your [OpenAI API key](https://platform.openai.com/api-keys) and click **Save**.
 
@@ -131,6 +140,8 @@ voice-to-text/
   main.py            # App (recorder, translator, UI, hotkeys)
   config.py          # Configuration
   requirements.txt   # Python dependencies
+  setup.bat          # One-click setup (venv + deps)
+  start.bat          # Launch the app
   .env               # Your API key (created via Settings, git-ignored)
   icon.ico           # App icon
 ```
