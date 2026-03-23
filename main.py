@@ -1,15 +1,15 @@
 """
-Voice to Text App v2.0
+Voice to Text App v3.0
 ======================
-ALT cift tiklama ile aktif olan, Whisper API ile Turkce ses tanima yapan
-basit ve hizli bir Windows uygulamasi.
+ALT cift tiklama ile aktif olan, Whisper API + GPT-4o-mini ile
+cok dilli ses tanima ve ceviri yapan Windows uygulamasi.
 
 Kullanim:
     1. Uygulamayi baslatin (system tray'de gorunecek)
     2. ALT'a 2 kez hizlica basin -> Kayit baslar
-    3. Turkce konusun
-    4. ALT'a 2 kez tekrar basin -> Kayit durur
-    5. Metin otomatik olarak aktif pencereye yapistirtilir
+    3. TR/RU/EN butonlarindan hedef dili secin
+    4. Herhangi bir dilde konusun
+    5. ALT'a 2 kez tekrar basin -> Secili dilde metin yapistirtilir
 """
 
 import sys
@@ -28,6 +28,7 @@ if sys.platform == 'win32' and sys.stdout is not None:
     except (AttributeError, OSError):
         pass  # Konsol yok, PyInstaller --windowed modunda
 
+import signal
 import time
 import wave
 import threading
@@ -171,13 +172,26 @@ class WhisperTranscriber:
 
 
 class FloatingIndicator:
-    """Minimal siyah gosterge — nokta + dalga + timer."""
+    """Figma-based recording indicator — dot + waveform + timer + lang buttons + X."""
 
     # Durum renkleri
     COLOR_RECORDING = "#FF3B30"   # Kirmizi — kayit
     COLOR_PROCESSING = "#FF9500"  # Turuncu — isliyor
     COLOR_SUCCESS = "#30D158"     # Yesil — yapistirdi
-    BAR_COLOR = "#3a3a3c"         # Koyu gri barlar
+    BAR_COLOR = "#d9d9d9"         # Acik gri barlar (Figma)
+
+    # Dil buton renkleri (Figma)
+    LANG_ACTIVE_BORDER = "#00af17"
+    LANG_ACTIVE_TEXT = "#00af17"
+    LANG_INACTIVE_BORDER = "#5d5d5d"
+    LANG_INACTIVE_TEXT = "#5d5d5d"
+
+    # Dil kodlari
+    LANGUAGES = [
+        ("TR", "tr"),
+        ("RU", "ru"),
+        ("EN", "en"),
+    ]
 
     def __init__(self, recorder=None):
         self.root = None
@@ -195,8 +209,27 @@ class FloatingIndicator:
         self.record_dot = None
         self.on_cancel = None  # Iptal callback
 
+        # Dil secimi — default TR
+        self.selected_lang = "tr"
+        self.lang_buttons = {}  # {code: {"rect": id, "text": id, "hit": id}}
+
     def set_recorder(self, recorder):
         self.recorder = recorder
+
+    def get_selected_language(self):
+        """Secili dil kodunu dondur."""
+        return self.selected_lang
+
+    def _select_language(self, lang_code):
+        """Dil butonunu sec ve gorseli guncelle."""
+        self.selected_lang = lang_code
+        for code, items in self.lang_buttons.items():
+            if code == lang_code:
+                self.canvas.itemconfig(items["rect"], outline=self.LANG_ACTIVE_BORDER)
+                self.canvas.itemconfig(items["text"], fill=self.LANG_ACTIVE_TEXT)
+            else:
+                self.canvas.itemconfig(items["rect"], outline=self.LANG_INACTIVE_BORDER)
+                self.canvas.itemconfig(items["text"], fill=self.LANG_INACTIVE_TEXT)
 
     def show(self, message: str):
         if self.root is None:
@@ -212,9 +245,12 @@ class FloatingIndicator:
         if self.record_dot:
             self.canvas.itemconfig(self.record_dot, fill=self.COLOR_RECORDING)
         if self.timer_text:
-            self.canvas.itemconfig(self.timer_text, fill="#8e8e93")
+            self.canvas.itemconfig(self.timer_text, fill="#d9d9d9")
         for bar in self.wave_bars:
             self.canvas.itemconfig(bar, fill=self.BAR_COLOR)
+
+        # Dil butonlarini resetle
+        self._select_language(self.selected_lang)
 
         if not self._is_visible:
             self.root.deiconify()
@@ -240,7 +276,6 @@ class FloatingIndicator:
         elif "Hata" in message:
             color = "#FF3B30"
         else:
-            # Isleniyor — turuncu
             color = self.COLOR_PROCESSING
 
         if self.record_dot:
@@ -275,7 +310,7 @@ class FloatingIndicator:
         self.phase += 0.1
         self.pulse_phase += 0.06
 
-        # Kayit noktasi pulse — kirmizi nefes alir
+        # Kayit noktasi pulse
         p = 0.5 + 0.5 * math.sin(self.pulse_phase)
         r = 255
         g = int(59 + 30 * p)
@@ -286,27 +321,73 @@ class FloatingIndicator:
         # Ses dalgasi
         self.bar_heights.pop(0)
         base = 2 + audio * 16
-        wave = math.sin(self.phase) * 2.5
-        new_h = max(1.5, (base + wave) * random.uniform(0.7, 1.3))
+        wave_val = math.sin(self.phase) * 2.5
+        new_h = max(1.5, (base + wave_val) * random.uniform(0.7, 1.3))
         self.bar_heights.append(new_h)
 
-        start_x = 48
-        cy = 28
-        gap = 5.0
-        bw = 2.5
-
+        cy = self._h // 2
         for i, bar in enumerate(self.wave_bars):
             h = self.bar_heights[i]
-            x = start_x + i * gap
-            self.canvas.coords(bar, x, cy - h, x + bw, cy + h)
+            x = self._wave_start_x + i * self._wave_gap
+            self.canvas.coords(bar, x, cy - h, x + self._wave_bw, cy + h)
 
-            # Ses seviyesine gore koyu gri → biraz daha acik gri
             t = min(1.0, h / 18)
-            c = int(58 + 30 * t)  # #3a3a3c → #585858
+            c = int(180 + 37 * t)  # #d9d9d9 tonlari
             self.canvas.itemconfig(bar, fill=f"#{c:02x}{c:02x}{c:02x}")
 
         if self.root:
             self.root.after(50, self._animate)
+
+    def _make_gradient_pill(self, w, h, radius, border=2,
+                            bg_left=(8, 8, 10), bg_right=(14, 40, 56),
+                            stroke_left=(20, 20, 24), stroke_right=(22, 101, 141)):
+        """PIL ile gradient arka plan + gradient stroke pill olustur."""
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+
+        # Stroke pill (dis)
+        draw.rounded_rectangle(
+            [0, 0, w - 1, h - 1], radius=radius,
+            fill=(0, 0, 0, 255), outline=None,
+        )
+        # Stroke gradient overlay — 120 derece acili
+        angle_rad = math.radians(45)
+        cos_a = math.cos(angle_rad)
+        sin_a = math.sin(angle_rad)
+        for x in range(w):
+            for y in range(h):
+                px = img.getpixel((x, y))
+                if px[3] > 0:
+                    t = ((x / w) * cos_a + (y / h) * sin_a + 1) / 2
+                    t = max(0.0, min(1.0, t))
+                    r = int(stroke_left[0] + (stroke_right[0] - stroke_left[0]) * t)
+                    g = int(stroke_left[1] + (stroke_right[1] - stroke_left[1]) * t)
+                    b = int(stroke_left[2] + (stroke_right[2] - stroke_left[2]) * t)
+                    img.putpixel((x, y), (r, g, b, 255))
+
+        # Ic pill (bg gradient)
+        inner = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        inner_draw = ImageDraw.Draw(inner)
+        inner_draw.rounded_rectangle(
+            [border, border, w - 1 - border, h - 1 - border],
+            radius=max(radius - border, 1),
+            fill=(0, 0, 0, 255), outline=None,
+        )
+        # BG gradient overlay
+        for x in range(w):
+            t = x / max(w - 1, 1)
+            # Gradient non-linear — sol %60 siyah kalsin, sag teal'e gecsin
+            t_curved = max(0, (t - 0.4) / 0.6) if t > 0.4 else 0
+            r = int(bg_left[0] + (bg_right[0] - bg_left[0]) * t_curved)
+            g = int(bg_left[1] + (bg_right[1] - bg_left[1]) * t_curved)
+            b = int(bg_left[2] + (bg_right[2] - bg_left[2]) * t_curved)
+            for y in range(h):
+                px = inner.getpixel((x, y))
+                if px[3] > 0:
+                    inner.putpixel((x, y), (r, g, b, 255))
+
+        img = Image.alpha_composite(img, inner)
+        return img
 
     def _create_window(self):
         self.root = tk.Tk()
@@ -314,7 +395,11 @@ class FloatingIndicator:
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
 
-        w, h = 280, 56
+        # --- Figma boyutlari ---
+        w, h = 580, 75
+        self._h = h
+        pad = 30
+        gap = 20
 
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
@@ -326,9 +411,8 @@ class FloatingIndicator:
         chroma = "#010101"
         self.root.configure(bg=chroma)
         self.root.attributes("-transparentcolor", chroma)
-        self.root.attributes("-alpha", 0.92)
+        self.root.attributes("-alpha", 0.95)
 
-        # Surukleme state
         self._drag_x = 0
         self._drag_y = 0
 
@@ -338,106 +422,170 @@ class FloatingIndicator:
         )
         self.canvas.pack()
 
-        # Pill shape — siyah govde, cok ince koyu gri border
-        self._pill(1, 1, w - 1, h - 1, 28,
-                   fill="#0a0a0a", outline="#2c2c2e", width=1)
+        # --- Pill gradient arka plan (PIL ile) ---
+        pill_img = self._make_gradient_pill(
+            w, h, radius=h // 2, border=2,
+            bg_left=(6, 6, 8),          # sol: siyaha yakin
+            bg_right=(12, 36, 50),      # sag: koyu teal
+            stroke_left=(18, 80, 112),  # stroke sol: teal
+            stroke_right=(18, 18, 22),  # stroke sag: koyu gri
+        )
+        from PIL import ImageTk
+        self._pill_photo = ImageTk.PhotoImage(pill_img)
+        self.canvas.create_image(0, 0, anchor="nw", image=self._pill_photo)
 
-        # Kayit noktasi — buyukce
-        dot_cx, dot_cy = 24, h // 2
-        dot_r = 8
+        cy = h // 2
+        cursor_x = pad  # soldan saga ilerleyen imleç
+
+        # --- Kayit noktasi (Figma: 18px çap) ---
+        dot_r = 9
+        dot_cx = cursor_x + dot_r
         self.record_dot = self.canvas.create_oval(
-            dot_cx - dot_r, dot_cy - dot_r,
-            dot_cx + dot_r, dot_cy + dot_r,
+            dot_cx - dot_r, cy - dot_r,
+            dot_cx + dot_r, cy + dot_r,
             fill=self.COLOR_RECORDING, outline="", width=0,
         )
+        cursor_x = dot_cx + dot_r + gap
 
-        # Ses dalgasi barlari
-        start_x = 48
-        cy = h // 2
-        gap = 5.0
-        bw = 2.5
+        # --- Ses dalgasi barlari (Figma: 3px genis, ~6px aralik, 24 bar) ---
+        self._wave_bw = 3
+        self._wave_gap = 6
+        self._wave_start_x = cursor_x
 
         self.wave_bars = []
         self.bar_heights = [2.0] * self.num_bars
         for i in range(self.num_bars):
-            bx = start_x + i * gap
+            bx = cursor_x + i * self._wave_gap
             bar = self.canvas.create_rectangle(
-                bx, cy - 2, bx + bw, cy + 2,
+                bx, cy - 2, bx + self._wave_bw, cy + 2,
                 fill=self.BAR_COLOR, outline="", width=0,
             )
             self.wave_bars.append(bar)
+        cursor_x += self.num_bars * self._wave_gap + gap
 
-        # Timer
+        # --- Timer (Figma: ~18px font, bold) ---
         self.timer_text = self.canvas.create_text(
-            w - 52, h // 2,
+            cursor_x, cy,
             text="0:00",
-            font=("Segoe UI Semibold", 11),
-            fill="#8e8e93", anchor="e",
+            font=("Segoe UI Semibold", 16),
+            fill="#d9d9d9", anchor="w",
         )
+        cursor_x += 62 + gap
 
-        # Ince ayirici cizgi
+        # --- Dil butonlari (Figma: 47px, rounded 13, font 12pt) ---
+        btn_size = 47
+        btn_gap = 13
+        btn_round = 22
+
+        # Butonlari timer ile separator arasinda ortala
+        sz_x = 10  # X boyutu (asagida da kullanilacak)
+        right_edge = w - pad - sz_x - 30  # separator pozisyonu
+        total_btns_w = 3 * btn_size + 2 * btn_gap
+        available_space = right_edge - cursor_x
+        btn_start_x = cursor_x + (available_space - total_btns_w) // 2 - 5
+
+        self.lang_buttons = {}
+        for idx, (label, code) in enumerate(self.LANGUAGES):
+            bx = btn_start_x + idx * (btn_size + btn_gap)
+            is_active = (code == self.selected_lang)
+
+            border_color = self.LANG_ACTIVE_BORDER if is_active else self.LANG_INACTIVE_BORDER
+            text_color = self.LANG_ACTIVE_TEXT if is_active else self.LANG_INACTIVE_TEXT
+
+            # Rounded rectangle buton
+            rect = self._rounded_rect(
+                bx, cy - btn_size // 2,
+                bx + btn_size, cy + btn_size // 2,
+                btn_round,
+                fill="#0a0a0a", outline=border_color, width=2,
+            )
+            # Buton metni (Figma: Inter 18px)
+            txt = self.canvas.create_text(
+                bx + btn_size // 2, cy,
+                text=label, font=("Inter", 12),
+                fill=text_color, anchor="center",
+            )
+            # Hit area
+            hit = self.canvas.create_rectangle(
+                bx - 2, cy - btn_size // 2 - 2,
+                bx + btn_size + 2, cy + btn_size // 2 + 2,
+                fill="", outline="", width=0,
+            )
+
+            self.lang_buttons[code] = {"rect": rect, "text": txt, "hit": hit}
+
+            def make_click_handler(c):
+                return lambda event: self._select_language(c)
+            self.canvas.tag_bind(hit, "<ButtonRelease-1>", make_click_handler(code))
+            self.canvas.tag_bind(txt, "<ButtonRelease-1>", make_click_handler(code))
+            self.canvas.tag_bind(rect, "<ButtonRelease-1>", make_click_handler(code))
+
+        cursor_x += 3 * (btn_size + btn_gap) + 4
+
+        # --- X (iptal) butonu sag kenara hizali ---
+        sz = 10
+        cx_btn = w - pad - sz
+
+        # --- Ayirici cizgi (X'in solunda) ---
+        sep_x = cx_btn - 30
         self.canvas.create_line(
-            w - 42, 14, w - 42, h - 14,
-            fill="#2c2c2e", width=1,
+            sep_x, 14, sep_x, h - 14,
+            fill="#3a3a3c", width=1,
         )
-
-        # X (iptal) butonu
-        cx_btn = w - 22
-        cy_btn = h // 2
-        sz = 6  # X cizgi boyutu
         self.x_line1 = self.canvas.create_line(
-            cx_btn - sz, cy_btn - sz, cx_btn + sz, cy_btn + sz,
-            fill="#636366", width=2, capstyle="round",
+            cx_btn - sz, cy - sz, cx_btn + sz, cy + sz,
+            fill="#FF453A", width=2.5, capstyle="round",
         )
         self.x_line2 = self.canvas.create_line(
-            cx_btn - sz, cy_btn + sz, cx_btn + sz, cy_btn - sz,
-            fill="#636366", width=2, capstyle="round",
+            cx_btn - sz, cy + sz, cx_btn + sz, cy - sz,
+            fill="#FF453A", width=2.5, capstyle="round",
         )
-        # X hover alani (gorunmez dikdortgen)
         self.x_hit = self.canvas.create_rectangle(
-            cx_btn - 14, cy_btn - 14, cx_btn + 14, cy_btn + 14,
+            cx_btn - 14, cy - 14, cx_btn + 14, cy + 14,
             fill="", outline="", width=0,
         )
         self.canvas.tag_bind(self.x_hit, "<Enter>", self._on_x_hover_in)
         self.canvas.tag_bind(self.x_hit, "<Leave>", self._on_x_hover_out)
         self.canvas.tag_bind(self.x_hit, "<ButtonRelease-1>", self._on_x_click)
-        # X cizimleri de tiklanabilir
         self.canvas.tag_bind(self.x_line1, "<ButtonRelease-1>", self._on_x_click)
         self.canvas.tag_bind(self.x_line2, "<ButtonRelease-1>", self._on_x_click)
 
-        # Surukleme icin mouse event'leri
+        # Surukleme
         self.canvas.bind("<ButtonPress-1>", self._on_drag_start)
         self.canvas.bind("<B1-Motion>", self._on_drag_move)
 
         self.root.withdraw()
 
     def _on_x_hover_in(self, event):
-        """X uzerine gelince kirmiziya don."""
+        self.canvas.itemconfig(self.x_line1, fill="#FF6961")
+        self.canvas.itemconfig(self.x_line2, fill="#FF6961")
+
+    def _on_x_hover_out(self, event):
         self.canvas.itemconfig(self.x_line1, fill="#FF453A")
         self.canvas.itemconfig(self.x_line2, fill="#FF453A")
 
-    def _on_x_hover_out(self, event):
-        """X'ten ayrilinca griye don."""
-        self.canvas.itemconfig(self.x_line1, fill="#636366")
-        self.canvas.itemconfig(self.x_line2, fill="#636366")
-
     def _on_x_click(self, event):
-        """X'e tiklaninca kaydi iptal et."""
         if self.on_cancel:
             self.on_cancel()
 
     def _on_drag_start(self, event):
-        """Surukleme basla — mouse offset kaydet."""
         self._drag_x = event.x
         self._drag_y = event.y
 
     def _on_drag_move(self, event):
-        """Pencereyi mouse ile surukle."""
         x = self.root.winfo_x() + (event.x - self._drag_x)
         y = self.root.winfo_y() + (event.y - self._drag_y)
         self.root.geometry(f"+{x}+{y}")
 
     def _pill(self, x1, y1, x2, y2, r=20, **kwargs):
+        points = [
+            x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r,
+            x2, y2 - r, x2, y2, x2 - r, y2, x1 + r, y2,
+            x1, y2, x1, y2 - r, x1, y1 + r, x1, y1,
+        ]
+        return self.canvas.create_polygon(points, smooth=True, **kwargs)
+
+    def _rounded_rect(self, x1, y1, x2, y2, r=10, **kwargs):
         points = [
             x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r,
             x2, y2 - r, x2, y2, x2 - r, y2, x1 + r, y2,
@@ -938,13 +1086,39 @@ class VoiceToTextApp:
         time.sleep(0.05)
         ctypes.windll.user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
 
+    def _translate_to_target(self, text: str, target_lang: str) -> str:
+        """Metni hedef dile cevir."""
+        lang_names = {"tr": "Turkish", "ru": "Russian", "en": "English"}
+        target_name = lang_names.get(target_lang, "Turkish")
+        try:
+            response = self.transcriber.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": f"You are a translator. Translate the given text to {target_name}. Only output the translation, nothing else. If the text is already in {target_name}, return it as-is."},
+                    {"role": "user", "content": text},
+                ],
+                max_tokens=1000,
+                temperature=0.3,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"Ceviri hatasi ({target_lang}): {e}")
+            return text  # Ceviri basarisiz olursa orijinal metni dondur
+
     def _process_audio(self, audio_path: str):
         """Ses dosyasini isle ve sonucu yapistir."""
         try:
-            text = self.transcriber.transcribe(audio_path, self.current_language)
+            # Indicator'daki dil secimini al
+            target_lang = self.indicator.get_selected_language()
+
+            # Once Whisper ile transkripsyon (otomatik dil algilama)
+            text = self.transcriber.transcribe(audio_path, language=None)
 
             if text:
-                pyperclip.copy(text)
+                # Hedef dile cevir (gerekirse)
+                translated = self._translate_to_target(text, target_lang)
+
+                pyperclip.copy(translated)
                 time.sleep(0.1)
 
                 if self.recording_start_hwnd:
@@ -979,18 +1153,25 @@ class VoiceToTextApp:
         draw.arc([18, 24, 46, 44], start=0, end=180, fill='white', width=3)
         return image
 
-    def _on_tray_quit(self, icon, item):
-        """Tray menusunden cikis."""
-        try:
-            self.stop()
-        except Exception:
-            pass
-        try:
-            icon.visible = False
-            icon.stop()
-        except Exception:
-            pass
-        os._exit(0)
+    def _on_tray_quit(self, icon=None, item=None):
+        """Tray menusunden veya signal ile cikis."""
+        def _shutdown():
+            try:
+                self.stop()
+            except Exception:
+                pass
+            try:
+                if icon:
+                    icon.visible = False
+                    icon.stop()
+                elif self.tray_icon:
+                    self.tray_icon.visible = False
+                    self.tray_icon.stop()
+            except Exception:
+                pass
+            os._exit(0)
+        # Ayri thread'de calistir — tray loop'u bloke etmesin
+        threading.Thread(target=_shutdown, daemon=True).start()
 
     def _show_settings_blocking(self):
         """Ilk calistirmada API key giris penceresi (blocking)."""
@@ -1112,9 +1293,10 @@ class VoiceToTextApp:
         """Hakkinda penceresi."""
         messagebox.showinfo(
             "Hakkinda",
-            "Voice to Text App v2.0\n\n"
+            "Voice to Text App v3.0\n\n"
             "ALT x2 ile kayit baslat/durdur.\n"
-            "Ses, Whisper API ile metne donusturulur.\n\n"
+            "TR/RU/EN butonlari ile hedef dil sec.\n"
+            "Hangi dilde konusursan konus, secili dilde yazar.\n\n"
             "2026"
         )
 
@@ -1156,6 +1338,20 @@ class VoiceToTextApp:
         indicator_thread = threading.Thread(target=self._run_indicator_loop, daemon=True)
         indicator_thread.start()
 
+        # Kill file watcher — disaridan .kill dosyasi olusturulursa kapat
+        def _watch_kill_file():
+            while True:
+                if os.path.exists(KILL_FILE):
+                    try:
+                        os.remove(KILL_FILE)
+                    except Exception:
+                        pass
+                    # Direkt cik — tray cleanup'a gerek yok
+                    os._exit(0)
+                time.sleep(1)
+        kill_watcher = threading.Thread(target=_watch_kill_file, daemon=True)
+        kill_watcher.start()
+
         self.tray_icon.run()
 
     def _run_indicator_loop(self):
@@ -1171,8 +1367,20 @@ class VoiceToTextApp:
         self.indicator.destroy()
 
 
+KILL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".kill")
+
+
+def request_kill():
+    """Kill file olustur — calisan uygulama bunu gorunce kapanir."""
+    with open(KILL_FILE, "w") as f:
+        f.write("kill")
+
+
 def check_single_instance():
     """Tek instance kontrolu - mutex ile."""
+    # Onceki kill file'i temizle
+    if os.path.exists(KILL_FILE):
+        os.remove(KILL_FILE)
     mutex_name = "VoiceToTextApp_SingleInstance_Mutex"
     kernel32 = ctypes.windll.kernel32
     mutex = kernel32.CreateMutexW(None, False, mutex_name)
@@ -1183,6 +1391,13 @@ def check_single_instance():
 
 def main():
     """Ana giris noktasi."""
+    # --kill argumani ile calisan uygulamayi kapat
+    if "--kill" in sys.argv:
+        request_kill()
+        print("Kill istegi gonderildi.")
+        time.sleep(2)
+        return
+
     mutex = check_single_instance()
     if mutex is None:
         messagebox.showinfo("Voice to Text", "Uygulama zaten calisiyor.\nSystem tray'de bulabilirsiniz.")
@@ -1190,9 +1405,19 @@ def main():
 
     try:
         app = VoiceToTextApp()
+
+        # Signal handler — disaridan kill edilebilsin
+        def _signal_handler(sig, frame):
+            app._on_tray_quit()
+        signal.signal(signal.SIGINT, _signal_handler)
+        signal.signal(signal.SIGTERM, _signal_handler)
+        # Windows CTRL_BREAK_EVENT
+        if sys.platform == 'win32':
+            signal.signal(signal.SIGBREAK, _signal_handler)
+
         app.run()
     except KeyboardInterrupt:
-        pass
+        app._on_tray_quit()
     except Exception as e:
         print(f"Hata: {e}")
         messagebox.showerror("Hata", str(e))
