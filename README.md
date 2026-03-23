@@ -13,9 +13,12 @@ A fast, minimal productivity tool for Windows with two powers:
 
 **Instant Translate** — Select any text, double-tap **CTRL**. A floating popup appears next to your mouse with the Turkish translation.
 
+**Translate to English** — Select any text, hold **CTRL+ALT**. The selected text is translated to English and replaces the original.
+
 ```
   Voice:      ALT ALT  →  Speak  →  ALT ALT  →  Text pasted
-  Translate:  Select text  →  CTRL CTRL  →  Translation popup
+  Translate:  Select text  →  CTRL CTRL  →  Translation popup (Turkish)
+  English:    Select text  →  CTRL+ALT   →  Text replaced with English translation
 ```
 
 ## Features
@@ -30,6 +33,7 @@ A fast, minimal productivity tool for Windows with two powers:
 
 ### Instant Translate
 - **CTRL x2** to translate selected text to Turkish
+- **CTRL+ALT** to translate selected text to English (replaces in-place)
 - **Follows your mouse** — popup moves with your cursor
 - Works everywhere — browser, Slack, Notepad, any app
 - Press **ESC** to dismiss
@@ -74,7 +78,8 @@ Change it anytime: **right-click tray icon > Settings**.
 | Shortcut | Action |
 |----------|--------|
 | **ALT x2** | Start/stop voice recording |
-| **CTRL x2** | Translate selected text |
+| **CTRL x2** | Translate selected text to Turkish |
+| **CTRL+ALT** | Translate selected text to English |
 | **ESC** | Cancel recording / close translation popup |
 
 ## How Voice to Text Works
@@ -94,6 +99,14 @@ Change it anytime: **right-click tray icon > Settings**.
 | **CTRL x2** | Selected text is captured and sent to GPT-4o-mini |
 | **Popup** | Turkish translation appears next to your mouse |
 | **ESC** | Dismiss the popup |
+
+## How English Translation Works
+
+| Step | What happens |
+|------|-------------|
+| **Select text** | Highlight any text in any app |
+| **CTRL+ALT** | Selected text is sent to GPT-4o-mini for English translation |
+| **Auto-replace** | Original text is replaced with the English translation |
 
 ## Configuration
 
@@ -122,7 +135,8 @@ Change voice language: **right-click tray icon > Language**.
 | Feature | Model | Pricing |
 |---------|-------|---------|
 | Voice to Text | Whisper | ~$0.006/min |
-| Translate | GPT-4o-mini | ~$0.00015/request |
+| Translate (TR) | GPT-4o-mini | ~$0.00015/request |
+| Translate (EN) | GPT-4o-mini | ~$0.00015/request |
 
 Both features are very affordable for daily use.
 
@@ -164,6 +178,7 @@ Make sure you have text selected before pressing CTRL x2. The app copies the sel
 
 | Version | Features |
 |---------|----------|
+| **v2.1** | + English translation (CTRL+ALT combo), in-place text replacement |
 | **v2.0** | + Instant Translate (CTRL x2), cancel button, ESC to cancel, draggable indicator |
 | **v1.0** | Voice to Text with ALT x2, auto-paste, settings panel |
 

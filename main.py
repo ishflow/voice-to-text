@@ -615,6 +615,11 @@ class VoiceToTextApp:
         self.ctrl_last_release_time = 0
         self.ctrl_other_key_pressed = False
 
+        # CTRL+ALT combo state (Ingilizce ceviri)
+        self.ctrl_held = False
+        self.alt_held = False
+        self.combo_triggered = False
+
 
         # Kayit basladiginda aktif pencere
         self.recording_start_hwnd = None
@@ -658,11 +663,21 @@ class VoiceToTextApp:
                     self.translation_popup.hide()
                 return
             if self._is_alt_key(key):
+                self.alt_held = True
                 self.alt_press_time = time.time()
                 self.other_key_pressed = False
+                # CTRL+ALT combo kontrolu
+                if self.ctrl_held and not self.combo_triggered:
+                    self.combo_triggered = True
+                    self._handle_english_translation()
             elif self._is_ctrl_key(key):
+                self.ctrl_held = True
                 self.ctrl_press_time = time.time()
                 self.ctrl_other_key_pressed = False
+                # CTRL+ALT combo kontrolu
+                if self.alt_held and not self.combo_triggered:
+                    self.combo_triggered = True
+                    self._handle_english_translation()
             else:
                 self.other_key_pressed = True
                 self.ctrl_other_key_pressed = True
@@ -674,7 +689,23 @@ class VoiceToTextApp:
         try:
             now = time.time()
 
-            # --- CTRL double-tap → ceviri ---
+            # --- CTRL+ALT combo bittiyse reset ---
+            if self._is_ctrl_key(key):
+                self.ctrl_held = False
+                if self.combo_triggered:
+                    if not self.alt_held:
+                        self.combo_triggered = False
+                    self.ctrl_last_release_time = 0
+                    return
+            if self._is_alt_key(key):
+                self.alt_held = False
+                if self.combo_triggered:
+                    if not self.ctrl_held:
+                        self.combo_triggered = False
+                    self.alt_last_release_time = 0
+                    return
+
+            # --- CTRL double-tap → Turkce ceviri ---
             if self._is_ctrl_key(key):
                 hold_ms = (now - self.ctrl_press_time) * 1000
                 if hold_ms > config.MAX_TAP_HOLD_MS:
@@ -766,6 +797,76 @@ class VoiceToTextApp:
         except Exception as e:
             print(f"Ceviri hatasi: {e}")
             return f"Ceviri hatasi: {e}"
+
+    def _translate_to_english(self, text: str) -> str:
+        """Metni Ingilizceye cevir."""
+        try:
+            response = self.transcriber.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a translator. Translate the given text to English. Only output the translation, nothing else."},
+                    {"role": "user", "content": text},
+                ],
+                max_tokens=1000,
+                temperature=0.3,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"Ingilizce ceviri hatasi: {e}")
+            return f"Translation error: {e}"
+
+    def _handle_english_translation(self):
+        """Tum yaziyi sec, Ingilizceye cevir, yerine yapistir."""
+        # Ctrl+A — tum metni sec
+        ctypes.windll.user32.keybd_event(0x11, 0, 0, 0)       # Ctrl down
+        time.sleep(0.03)
+        ctypes.windll.user32.keybd_event(0x41, 0, 0, 0)       # A down
+        time.sleep(0.03)
+        ctypes.windll.user32.keybd_event(0x41, 0, 0x0002, 0)  # A up
+        ctypes.windll.user32.keybd_event(0x11, 0, 0x0002, 0)  # Ctrl up
+        time.sleep(0.1)
+
+        # Ctrl+C — kopyala
+        old_clip = ""
+        try:
+            old_clip = pyperclip.paste()
+        except Exception:
+            pass
+
+        ctypes.windll.user32.keybd_event(0x11, 0, 0, 0)       # Ctrl down
+        time.sleep(0.03)
+        ctypes.windll.user32.keybd_event(0x43, 0, 0, 0)       # C down
+        time.sleep(0.03)
+        ctypes.windll.user32.keybd_event(0x43, 0, 0x0002, 0)  # C up
+        ctypes.windll.user32.keybd_event(0x11, 0, 0x0002, 0)  # Ctrl up
+        time.sleep(0.15)
+
+        try:
+            text = pyperclip.paste()
+        except Exception:
+            return
+        if not text or not text.strip():
+            return
+
+        text = text.strip()
+
+        def do_translate():
+            result = self._translate_to_english(text)
+            if result:
+                pyperclip.copy(result)
+                time.sleep(0.1)
+                # Ctrl+A — tekrar tum metni sec
+                ctypes.windll.user32.keybd_event(0x11, 0, 0, 0)
+                time.sleep(0.03)
+                ctypes.windll.user32.keybd_event(0x41, 0, 0, 0)
+                time.sleep(0.03)
+                ctypes.windll.user32.keybd_event(0x41, 0, 0x0002, 0)
+                ctypes.windll.user32.keybd_event(0x11, 0, 0x0002, 0)
+                time.sleep(0.1)
+                # Ctrl+V — yapistir (secili metnin yerine)
+                self._send_paste()
+
+        threading.Thread(target=do_translate, daemon=True).start()
 
     def _handle_translation(self):
         """Secili metni cevirip popup goster."""
