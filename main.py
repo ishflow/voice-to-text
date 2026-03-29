@@ -763,9 +763,10 @@ class VoiceToTextApp:
         self.ctrl_last_release_time = 0
         self.ctrl_other_key_pressed = False
 
-        # CTRL+ALT combo state (Ingilizce ceviri)
+        # SHIFT+CTRL+ALT+T combo state (Ingilizce ceviri)
         self.ctrl_held = False
         self.alt_held = False
+        self.shift_held = False
         self.combo_triggered = False
 
 
@@ -801,6 +802,15 @@ class VoiceToTextApp:
     def _is_ctrl_key(self, key):
         return key == keyboard.Key.ctrl_l or key == keyboard.Key.ctrl_r
 
+    def _is_shift_key(self, key):
+        return key == keyboard.Key.shift or key == keyboard.Key.shift_r
+
+    def _is_t_key(self, key):
+        try:
+            return key.char == 't'
+        except AttributeError:
+            return False
+
     def on_key_press(self, key):
         """Tus basimi event handler."""
         try:
@@ -814,18 +824,20 @@ class VoiceToTextApp:
                 self.alt_held = True
                 self.alt_press_time = time.time()
                 self.other_key_pressed = False
-                # CTRL+ALT combo kontrolu
-                if self.ctrl_held and not self.combo_triggered:
-                    self.combo_triggered = True
-                    self._handle_english_translation()
             elif self._is_ctrl_key(key):
                 self.ctrl_held = True
                 self.ctrl_press_time = time.time()
                 self.ctrl_other_key_pressed = False
-                # CTRL+ALT combo kontrolu
-                if self.alt_held and not self.combo_triggered:
+            elif self._is_shift_key(key):
+                self.shift_held = True
+            elif self._is_t_key(key):
+                # SHIFT+CTRL+ALT+T combo kontrolu
+                if self.shift_held and self.ctrl_held and self.alt_held and not self.combo_triggered:
                     self.combo_triggered = True
                     self._handle_english_translation()
+                else:
+                    self.other_key_pressed = True
+                    self.ctrl_other_key_pressed = True
             else:
                 self.other_key_pressed = True
                 self.ctrl_other_key_pressed = True
@@ -837,18 +849,23 @@ class VoiceToTextApp:
         try:
             now = time.time()
 
-            # --- CTRL+ALT combo bittiyse reset ---
+            # --- SHIFT+CTRL+ALT+T combo bittiyse reset ---
+            if self._is_shift_key(key):
+                self.shift_held = False
+                if self.combo_triggered:
+                    self.combo_triggered = False
+                return
             if self._is_ctrl_key(key):
                 self.ctrl_held = False
                 if self.combo_triggered:
-                    if not self.alt_held:
+                    if not self.alt_held and not self.shift_held:
                         self.combo_triggered = False
                     self.ctrl_last_release_time = 0
                     return
             if self._is_alt_key(key):
                 self.alt_held = False
                 if self.combo_triggered:
-                    if not self.ctrl_held:
+                    if not self.ctrl_held and not self.shift_held:
                         self.combo_triggered = False
                     self.alt_last_release_time = 0
                     return
